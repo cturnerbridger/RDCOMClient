@@ -1,14 +1,10 @@
 .onLoad <-
 function(lib, pkg) {
- #library.dynam("RDCOMClient", pkg, lib)
  .COMInit()
 }
 
-
-#.Last.lib <-
-#function() {
-#  gc()
-#}
-
-
-
+.onUnload <-
+function(libpath) {
+ tryCatch(.Call("R_initCOM", FALSE, PACKAGE = "RDCOMClient"), error = function(e) NULL)
+ library.dynam.unload("RDCOMClient", libpath)
+}

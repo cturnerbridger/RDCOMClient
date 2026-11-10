@@ -1,6 +1,28 @@
+0.96-2 (Fork update by Christian <christian.turner.bridger@gmail.com>)
+
++ Updated build configuration and C/C++ compatibility for R 4.6.x on Windows (Rtools 4.5 / GCC 14.3.0):
+  + Simplified src/Makevars.win by removing hardcoded local author paths and non-existent DEF references.
+  + Moved R headers (<Rinternals.h>, <Rdefines.h>, RUtils.h) outside extern "C" blocks across src/connect.cpp, src/converters.cpp, src/RCOMObject.h, and src/RCOMObject.cpp.
+  + Replaced removed EXTPTR_TAG macro with R_ExternalPtrTag in src/converters.cpp.
++ UTF-8 & String Encoding Fixes:
+  + Updated AsBstr() and FromBstr() in src/converters.cpp to convert cleanly using CP_UTF8 with dynamically sized UTF-16/UTF-8 buffers (using wcslen() in FromBstr() so CoTaskMemAlloc'd LPOLESTR buffers from StringFromCLSID work safely).
+  + Switched WideCharToMultiByte calls in src/RCOMObject.cpp from CP_ACP to CP_UTF8.
+  + Updated R_scalarString() and getRString() in src/RUtils.c to use Rf_mkCharCE(..., CE_UTF8) and Rf_translateCharUTF8(), and updated src/connect.cpp and R_create2DArray() in src/converters.cpp to pass Rf_translateCharUTF8() strings to AsBstr().
++ COM Reference Counting, Heap & Memory Leak Fixes:
+  + Fixed IUnknown* reference leak in R_connect() and ITypeInfo*/FUNCDESC* leaks in R_isReadOnly() in src/connect.cpp.
+  + Freed BSTR arrays on GetIDsOfNames failure in R_COM_Invoke().
+  + Fixed heap corruption in RCOMObject::QueryInterface() by replacing SysFreeString() with CoTaskMemFree() on StringFromCLSID() output.
+  + Removed duplicate errorInfo->AddRef() and freed BSTR buffers in checkErrorInfo() in src/COMError.cpp.
+  + Made ~RCOMObject() virtual and re-enabled delete this in RCOMObject::Release().
+  + Added VariantInit() before VariantCopyInd() in createRVariantObject().
+  + Made RDCOM_finalizer() GC-safe without calling error-throwing helpers during finalization.
+  + Added .onUnload() hook in R/zzz.R to uninitialize COM and unload the DLL cleanly.
++ SAFEARRAY & Logical Matrix Conversion Fixes:
+  + Updated getArray() in src/converters.cpp to inspect SafeArrayGetVartype() for typed vs. VT_VARIANT SAFEARRAY elements and call VariantClear() after R conversion.
+  + Fixed 1D logical arrays (createRDCOMArray) and 2D logical matrices (R_create2DArray) to write 2-byte VARIANT_BOOL values (VARIANT_TRUE / VARIANT_FALSE).
+  + Fixed BSTR leaks and finalizer registration (R_Variant_finalizer instead of RDCOM_SafeArray_finalizer) in R_create2DArray().
 
 0.96-1
 
 + Removed the check in [[<- to see if the property is read-only. Have to handle case where there are two property elements in the type library with the same name (e.g., Visible) with a PROPERTYGET and PROPERTYPUT.
    + For now, we try to set the property and don't signal an error if it fails.
-

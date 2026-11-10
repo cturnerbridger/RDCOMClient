@@ -1,13 +1,21 @@
 Package: RDCOMClient
-Version: 0.96-1
+Version: 0.96-2
+Date: 2026-11-10
 Title: R-DCOM client
-Author:  Duncan Temple Lang <duncan@r-project.org>
-Maintainer: Duncan Temple Lang <duncan@r-project.org>
+Author: Duncan Temple Lang <duncan@r-project.org> [aut],
+    Christian <christian.turner.bridger@gmail.com> [ctb]
+Maintainer: Christian <christian.turner.bridger@gmail.com>
 Contributions: Jo Totland (https://github.com/jototland)
 Description: Provides dynamic client-side access to (D)COM applications from within R.
+    Maintained public fork updated for R 4.6.x on Windows (Rtools 4.5 / GCC 14),
+    including UTF-8 string conversion, SAFEARRAY and VARIANT_BOOL fixes,
+    COM reference-counting repairs, and GC-safe finalizers.
 License: GPL-2
 LazyLoad: yes
+Encoding: UTF-8
 Imports: methods
 Collate: classes.R COMLists.S  COMError.R com.R debug.S zzz.R runTime.S
-URL:  https://github.com/omegahat/RDCOMClient
-     http://www.omegahat.net/RDCOMClient,  http://www.omegahat.net
+URL: https://github.com/cturnerbridger/RDCOMClient,
+     https://github.com/omegahat/RDCOMClient,
+     http://www.omegahat.net/RDCOMClient
+BugReports: https://github.com/cturnerbridger/RDCOMClient/issues

@@ -32,10 +32,10 @@
 
 #undef ERROR
 
-extern "C" {
 #include <Rinternals.h>
-  //#include <Defn.h>
 #include <Rdefines.h>
+
+extern "C" {
   extern void R_PreserveObject(SEXP);
   extern void R_ReleaseObject(SEXP);
 }
@@ -58,8 +58,7 @@ class RCOMObject : public IDispatch
     virtual HRESULT __stdcall QueryInterface(const IID& iid, void** ppv);
     virtual ULONG __stdcall AddRef() {return InterlockedIncrement(&m_cRef);}
     virtual ULONG __stdcall Release() { if(InterlockedDecrement(&m_cRef) == 0) {
-	// XXX  Compiler warning: deleting object of abstract class type 'RCOMObject' which has non-virtual destructor will cause undefined behavior
-	// delete this;
+					  delete this;
 					  return 0;
                                         }
                                         return m_cRef;
@@ -88,13 +87,12 @@ class RCOMObject : public IDispatch
                           if(def != R_NilValue)
                              setObject(def);
                        };
-  ~RCOMObject() {
-                  m_cRef--;
-                  if(m_cRef == 0) {
-		    destroy();
-		    R_ReleaseObject(obj);
-                  }
-                };
+  virtual ~RCOMObject() {
+                    destroy();
+                    if(obj && obj != R_NilValue) {
+                      R_ReleaseObject(obj);
+                    }
+                  };
 
  SEXP R_getObject() { return(obj);}; 
  SEXP R_setObject(SEXP def) { SEXP old = obj; 

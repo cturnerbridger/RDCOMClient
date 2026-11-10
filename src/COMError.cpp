@@ -471,25 +471,26 @@ checkErrorInfo(IUnknown *obj, HRESULT status, SEXP *serr)
 
   /* So there is some information for us. Use it. */
   SEXP klass, ans, tmp;
-  BSTR ostr;
-  char *str;
-
-  errorInfo->AddRef();
+  char *str = NULL;
 
   if(serr) {
+   BSTR bstrSrc = NULL, bstrDesc = NULL;
    PROTECT(klass = MAKE_CLASS("SCOMErrorInfo"));
    PROTECT(ans = NEW(klass));
 
    PROTECT(tmp = NEW_CHARACTER(1));
-   errorInfo->GetSource(&ostr);
-   SET_STRING_ELT(tmp, 0, COPY_TO_USER_STRING(FromBstr(ostr)));
+   errorInfo->GetSource(&bstrSrc);
+   SET_STRING_ELT(tmp, 0, COPY_TO_USER_STRING(FromBstr(bstrSrc)));
    SET_SLOT(ans, Rf_install("source"), tmp);
+   if(bstrSrc) SysFreeString(bstrSrc);
    UNPROTECT(1);
 
    PROTECT(tmp = NEW_CHARACTER(1));
-   errorInfo->GetDescription(&ostr);
-   SET_STRING_ELT(tmp, 0, COPY_TO_USER_STRING(str = FromBstr(ostr)));
+   errorInfo->GetDescription(&bstrDesc);
+   str = FromBstr(bstrDesc);
+   SET_STRING_ELT(tmp, 0, COPY_TO_USER_STRING(str));
    SET_SLOT(ans, Rf_install("description"), tmp);
+   if(bstrDesc) SysFreeString(bstrDesc);
    UNPROTECT(1);
 
    PROTECT(tmp = NEW_NUMERIC(1));
@@ -501,14 +502,18 @@ checkErrorInfo(IUnknown *obj, HRESULT status, SEXP *serr)
 
    errorInfo->Release();
 
-   PROBLEM "%s", str
+   PROBLEM "%s", str ? str : ""
    WARN;
   } else {
-   errorInfo->GetDescription(&ostr);
-   str = FromBstr(ostr);
-   errorInfo->GetSource(&ostr);
+   BSTR bstrDesc = NULL, bstrSrc = NULL;
+   errorInfo->GetDescription(&bstrDesc);
+   str = FromBstr(bstrDesc);
+   errorInfo->GetSource(&bstrSrc);
+   char *srcStr = FromBstr(bstrSrc);
    errorInfo->Release();
-   PROBLEM "%s (%s)", str, FromBstr(ostr)
+   if(bstrDesc) SysFreeString(bstrDesc);
+   if(bstrSrc) SysFreeString(bstrSrc);
+   PROBLEM "%s (%s)", str ? str : "", srcStr ? srcStr : ""
    ERROR;
   }
 

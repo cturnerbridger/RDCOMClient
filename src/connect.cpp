@@ -16,13 +16,9 @@
 #endif
 
 
-extern "C" {
 #include "RUtils.h"
 #include <Rinternals.h>
 #include <Rdefines.h>
-}
-
-
 
 #include "converters.h"
 
@@ -103,7 +99,7 @@ R_getCLSIDFromString(SEXP className, CLSID *classId)
   int status = FALSE;
   BSTR str;
 
-  ptr = CHAR(STRING_ELT(className, 0)); 
+  ptr = Rf_translateCharUTF8(STRING_ELT(className, 0)); 
   str = AsBstr(ptr);
    
   hr = CLSIDFromString(str, classId);
@@ -157,9 +153,14 @@ R_connect(SEXP className, SEXP raiseError)
   if(R_getCLSIDFromString(className, &classId) == S_OK) {
     hr = GetActiveObject(classId, NULL, &unknown);
     if(SUCCEEDED(hr)) {
-      void *ptr;
+      void *ptr = NULL;
       hr = unknown->QueryInterface(IID_IDispatch, &ptr);
-      ans = R_createRCOMUnknownObject((void *) ptr, "COMIDispatch");
+      unknown->Release();
+      if(SUCCEEDED(hr) && ptr) {
+        ans = R_createRCOMUnknownObject((void *) ptr, "COMIDispatch");
+      } else {
+        ans = R_NilValue;
+      }
     } else {
       if(LOGICAL(raiseError)[0]) {
 	/* From COMError.cpp  - COMError */
@@ -265,7 +266,7 @@ R_lookupPropName(SEXP obj, SEXP propName)
 
   DISPID methodIds[1];
   BSTR comNames[1];
-  comNames[0] = AsBstr(CHAR(STRING_ELT(propName, 0)));
+  comNames[0] = AsBstr(Rf_translateCharUTF8(STRING_ELT(propName, 0)));
      
   hr = disp->GetIDsOfNames(IID_NULL, comNames, 1, LOCALE_USER_DEFAULT, methodIds);
   freeSysStrings(comNames, 1);
@@ -302,8 +303,10 @@ R_isReadOnly(SEXP obj, SEXP propId)
      if(desc) {
        errorLog("FUNCDESC %d\n", desc->invkind);
        readOnly = (desc->invkind == INVOKE_PROPERTYGET);
+       type->ReleaseFuncDesc(desc);
      }
      errorLog("readOnly.   %d\n", readOnly);
+     type->Release();
    }
 
    return(ScalarLogical(readOnly));
@@ -331,7 +334,7 @@ R_COM_Invoke(SEXP obj, SEXP methodName, SEXP args, WORD callType, WORD doReturn,
 #endif
 
  DISPID *methodIds;
- const char *pmname = CHAR(STRING_ELT(methodName, 0));
+ const char *pmname = Rf_translateCharUTF8(STRING_ELT(methodName, 0));
  BSTR *comNames = NULL;
 
  SEXP names = GET_NAMES(args);
@@ -347,7 +350,7 @@ R_COM_Invoke(SEXP obj, SEXP methodName, SEXP args, WORD callType, WORD doReturn,
 
      comNames[0] = AsBstr(pmname);
      for(i = 0; i < Rf_length(names); i++) {
-       const char *str = CHAR(STRING_ELT(names, i));
+       const char *str = Rf_translateCharUTF8(STRING_ELT(names, i));
        if(str && str[0]) {
          comNames[numNamedArgs+1] = AsBstr(str);
          namedArgPositions[numNamedArgs] = i;
@@ -359,6 +362,7 @@ R_COM_Invoke(SEXP obj, SEXP methodName, SEXP args, WORD callType, WORD doReturn,
      hr = disp->GetIDsOfNames(IID_NULL, comNames, numNames, LOCALE_USER_DEFAULT, methodIds);
 
      if(FAILED(hr) || hr == DISP_E_UNKNOWNNAME /* || DISPID mid == DISPID_UNKNOWN */) {
+       freeSysStrings(comNames, numNames);
        PROBLEM "Cannot locate %d name(s) %s in COM object (status = %d)", numNamedArgs, pmname, (int) hr
 	 ERROR;
      }

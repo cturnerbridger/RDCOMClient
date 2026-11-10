@@ -1,0 +1,10 @@
+src/*.o
+src/*.dll
+src/*.so
+src/*.rds
+*.tar.gz
+*.zip
+RDCOMClient.Rcheck/
+.Rhistory
+.RData
+.Rproj.user/

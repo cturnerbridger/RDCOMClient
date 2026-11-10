@@ -3,9 +3,7 @@
 
 #undef ERROR
 
-extern "C" {
 #include <Rdefines.h>
-}
 
 bool isCOMError(SEXP obj);
 bool isClass(SEXP obj, const char *name);
@@ -82,7 +80,7 @@ RCOMObject::QueryInterface(const IID& iid, void** ppv)
 #ifdef RDCOM_VERBOSE
       errorLog("[end RCOMObject::QueryInterface]\n");
 #endif
-	SysFreeString(ostr);
+	CoTaskMemFree(ostr);
 
 	return hr;
 }
@@ -143,7 +141,7 @@ RCOMObject::lookupRName(SEXP names, LPOLESTR *name, DISPID *id)
 {
   char str[1000];
    memset(str, '\0', sizeof(str)/sizeof(str[0]));
-   WideCharToMultiByte(CP_ACP, 0, *name, -1, str, sizeof(str)/sizeof(str[0]), NULL, NULL);
+   WideCharToMultiByte(CP_UTF8, 0, *name, -1, str, sizeof(str)/sizeof(str[0]), NULL, NULL);
    return(lookupRName(names, str, id));
 }
 
@@ -299,7 +297,7 @@ asRStringVector(LPOLESTR *name, UINT cNames)
   PROTECT(tmp = allocVector(STRSXP, cNames));
   for(i = 0; i < cNames; i++) {
     memset(str, '\0', sizeof(str)/sizeof(str[0]));
-    WideCharToMultiByte(CP_ACP, 0, name[i], -1, str, sizeof(str)/sizeof(str[0]), NULL, NULL);
+    WideCharToMultiByte(CP_UTF8, 0, name[i], -1, str, sizeof(str)/sizeof(str[0]), NULL, NULL);
     SET_STRING_ELT(tmp, i, COPY_TO_USER_STRING(str));
   }
   UNPROTECT(1);

@@ -4,10 +4,10 @@
 #include <tchar.h>
 
 // #undef ERROR
-extern "C" {
 #include "RUtils.h"
 #include <Rdefines.h>
 
+extern "C" {
   SEXP R_getDynamicVariantValue(SEXP ref);
   SEXP R_setDynamicVariantValue(SEXP ref, SEXP value);
 }
@@ -25,15 +25,18 @@ AsBstr(const char *str)
   if(!str)
     return(NULL);
 
-  int size = strlen(str);
-  int wideSize = 2 * size;
-  LPOLESTR wstr = (LPWSTR) S_alloc(wideSize, sizeof(OLECHAR)); 
-  if(MultiByteToWideChar(CP_ACP, 0, str, size, wstr, wideSize) == 0 && str[0]) {
-    PROBLEM "Can't create BSTR for '%s'", str
-    ERROR;
+  int cch = MultiByteToWideChar(CP_UTF8, 0, str, -1, NULL, 0);
+  if(cch <= 0) {
+    if(str[0]) {
+      PROBLEM "Can't create BSTR for '%s'", str
+      ERROR;
+    }
+    return SysAllocStringLen(NULL, 0);
   }
 
-  ans = SysAllocStringLen(wstr, size);
+  LPOLESTR wstr = (LPWSTR) S_alloc(cch, sizeof(OLECHAR)); 
+  MultiByteToWideChar(CP_UTF8, 0, str, -1, wstr, cch);
+  ans = SysAllocStringLen(wstr, cch - 1);
 
   return(ans);
 }
@@ -42,23 +45,25 @@ char *
 FromBstr(BSTR str)
 {
   char *ptr = NULL;
-  DWORD len;
-
   if(!str)
     return(NULL);
 
-  len = wcslen(str);
-
-  if(len < 1)
-    len = 0;
-
-  ptr = (char *) S_alloc(len+1, sizeof(char));
-  ptr[len] = '\0';
-  if(len > 0) {
-    DWORD ok = WideCharToMultiByte(CP_ACP, 0, str, len, ptr, len, NULL, NULL);
-    if(ok == 0) 
-      ptr = NULL;
+  size_t wlen = wcslen(str);
+  if(wlen == 0) {
+    ptr = (char *) S_alloc(1, sizeof(char));
+    ptr[0] = '\0';
+    return(ptr);
   }
+
+  int cb = WideCharToMultiByte(CP_UTF8, 0, str, (int) wlen, NULL, 0, NULL, NULL);
+  if(cb <= 0)
+    return(NULL);
+
+  ptr = (char *) S_alloc(cb + 1, sizeof(char));
+  int ok = WideCharToMultiByte(CP_UTF8, 0, str, (int) wlen, ptr, cb, NULL, NULL);
+  if(ok == 0)
+    return(NULL);
+  ptr[cb] = '\0';
 
   return(ptr);
 }
@@ -120,14 +125,26 @@ getArray(SAFEARRAY *arr, int dimNo, int numDims, long *indices)
     if(dimNo == 1) {
       VARIANT variant;
       VariantInit(&variant);
-      status = SafeArrayGetElement(arr, indices, &variant);
+      VARTYPE vt = VT_VARIANT;
+      SafeArrayGetVartype(arr, &vt);
+      if(vt == VT_VARIANT) {
+        status = SafeArrayGetElement(arr, indices, &variant);
+      } else if(vt == VT_DECIMAL) {
+        status = SafeArrayGetElement(arr, indices, &variant);
+        V_VT(&variant) = VT_DECIMAL;
+      } else {
+        V_VT(&variant) = vt;
+        status = SafeArrayGetElement(arr, indices, (void*)&V_UI1(&variant));
+      }
       if(FAILED(status)) {
         TCHAR buf[512];
         GetScodeString(status, buf, sizeof(buf)/sizeof(buf[0]));
         PROBLEM "Can't get element %d of array %s", (int) indices[dimNo-1], buf
         ERROR;
       } 
-      el = R_convertDCOMObjectToR(&variant);
+      PROTECT(el = R_convertDCOMObjectToR(&variant));
+      VariantClear(&variant);
+      UNPROTECT(1);
     } else {
       el = getArray(arr, dimNo - 1, numDims, indices);
     }
@@ -213,6 +230,7 @@ createRVariantObject(VARIANT *var,  VARTYPE kind)
   }
   
   dupvar = (VARIANT *) malloc(sizeof(VARIANT));
+  VariantInit(dupvar);
   VariantCopyInd(dupvar, var);
   
   PROTECT(ans = NEW(klass));
@@ -294,7 +312,7 @@ R_getVariantRef(SEXP ref)
       ERROR;
   }
 
-  if(EXTPTR_TAG(ref) != Rf_install("VARIANTReference")) {
+  if(R_ExternalPtrTag(ref) != Rf_install("VARIANTReference")) {
     PROBLEM "Argument to R_getVariantRef does not have the correct tag."
     ERROR;
   }
@@ -585,7 +603,7 @@ createRDCOMArray(SEXP obj, VARIANT *var)
       break;
     case LGLSXP:
       for(unsigned int i = 0 ; i < len ; i++)
-	((bool *) data)[i] = LOGICAL(obj)[i];
+	((VARIANT_BOOL *) data)[i] = LOGICAL(obj)[i] ? VARIANT_TRUE : VARIANT_FALSE;
       break;
     case STRSXP:
       for(unsigned int i = 0 ; i < len ; i++)
@@ -674,7 +692,7 @@ R_convertRObjectToDCOM(SEXP obj, VARIANT *var)
   errorLog("Type of argument %d\n", type);
 #endif
 
- if(type == EXTPTRSXP && EXTPTR_TAG(obj) == Rf_install("R_VARIANT")) {
+ if(type == EXTPTRSXP && R_ExternalPtrTag(obj) == Rf_install("R_VARIANT")) {
    VARIANT *tmp;
    tmp = (VARIANT *) R_ExternalPtrAddr(obj);
    if(tmp) {
@@ -770,8 +788,13 @@ extern "C" {
 void
 RDCOM_finalizer(SEXP s)
 {
- IUnknown *ptr = (IUnknown*) derefRDCOMPointer(s);
- if(ptr) {
+ if(TYPEOF(s) != EXTPTRSXP || s == R_NilValue)
+   return;
+ void *p = R_ExternalPtrAddr(s);
+ if(!p)
+   return;
+
+ IUnknown *ptr = (IUnknown*) p;
 #ifdef ANNOUNCE_COM_CALLS
    fprintf(stderr, "Releasing COM object %p\n", ptr);fflush(stderr);
 #endif
@@ -780,13 +803,11 @@ RDCOM_finalizer(SEXP s)
    registerCOMObject(ptr, 0);
 #endif
 
-   //XXX 
-  ptr->Release();
+   ptr->Release();
 #ifdef ANNOUNCE_COM_CALLS
    fprintf(stderr, "Released COM object %p\n", ptr);fflush(stderr);
 #endif
    R_ClearExternalPtr(s);
- }
 }
 
 void
@@ -805,12 +826,13 @@ R_create2DArray(SEXP obj)
 {
   SAFEARRAYBOUND bounds[2] =  {{0, 0}, {0, 0}};;
   SAFEARRAY *arr;
-  void *data, *el;
+  void *el;
   VARTYPE type = VT_R8;
   SEXP dim = GET_DIM(obj);
   int integer;
+  VARIANT_BOOL vbool;
   double real;
-  BSTR bstr;
+  BSTR bstr = NULL;
 
 
   bounds[0].cElements = INTEGER(dim)[0];
@@ -819,7 +841,6 @@ R_create2DArray(SEXP obj)
   type = getDCOMType(obj);
 
   arr = SafeArrayCreate(type, 2, bounds);
-  SafeArrayAccessData(arr, (void**) &data);
 
   long indices[2];
   UINT i, j, ctr = 0;
@@ -829,8 +850,8 @@ R_create2DArray(SEXP obj)
       indices[0] = i;
       switch(TYPEOF(obj)) {
         case LGLSXP:
-	  integer =  (LOGICAL(obj)[ctr] ? 1:0);
-          el = &integer;
+	  vbool = (LOGICAL(obj)[ctr] ? VARIANT_TRUE : VARIANT_FALSE);
+          el = &vbool;
 	  break;
         case REALSXP:
 	  real = REAL(obj)[ctr];
@@ -841,7 +862,7 @@ R_create2DArray(SEXP obj)
           el = &integer;
 	  break;
         case STRSXP:
-	  bstr = AsBstr(CHAR(STRING_ELT(obj, ctr)));
+	  bstr = AsBstr(Rf_translateCharUTF8(STRING_ELT(obj, ctr)));
           el = (void*) bstr;
 	  break;
         default:
@@ -850,9 +871,11 @@ R_create2DArray(SEXP obj)
       }
 
       SafeArrayPutElement(arr, indices, el);
+      if(TYPEOF(obj) == STRSXP && bstr) {
+        SysFreeString(bstr);
+      }
     }
   }
-  SafeArrayUnaccessData(arr);
 
   VARIANT *var;
   var = (VARIANT*) malloc(sizeof(VARIANT));
@@ -862,7 +885,7 @@ R_create2DArray(SEXP obj)
 
   SEXP ans;
   PROTECT(ans = R_MakeExternalPtr((void*) var, Rf_install("R_VARIANT"), R_NilValue));
-  R_RegisterCFinalizer(ans, RDCOM_SafeArray_finalizer);  
+  R_RegisterCFinalizer(ans, R_Variant_finalizer);  
   UNPROTECT(1);
   return(ans);
 }

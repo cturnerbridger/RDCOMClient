@@ -5,3 +5,8 @@
 .*~$
 Makefile.gcc
 LICENSE
+^\.gitignore$
+^\.gitattributes$
+^.*\.tar\.gz$
+^.*\.zip$
+^RDCOMClient\.Rcheck$

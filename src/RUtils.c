@@ -223,7 +223,7 @@ R_scalarString(const char * const v)
   SEXP ans = allocVector(STRSXP, 1);
   PROTECT(ans);
   if(v)
-    SET_STRING_ELT(ans, 0, mkChar(v));
+    SET_STRING_ELT(ans, 0, Rf_mkCharCE(v, CE_UTF8));
   UNPROTECT(1);
   return(ans);
 }
@@ -282,7 +282,7 @@ getRNilValue(void)
 const char *
 getRString(SEXP str, int which)
 {
- return(CHAR(STRING_ELT(str, which)));
+ return(Rf_translateCharUTF8(STRING_ELT(str, which)));
 }
 
 SEXP getRNames(SEXP obj)
